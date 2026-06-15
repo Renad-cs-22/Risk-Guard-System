@@ -1,0 +1,117 @@
+import hashlib
+import json
+import uuid
+from datetime import datetime
+
+class RiskGuardSystem:
+    def __init__(self):
+        # استخدام القواميس لضمان سرعة الوصول والتحقق
+        self.pending_requests = {} 
+        self.audit_log = []        
+        self.last_log_hash = "0"   
+
+    def create_transaction(self, maker_name: str, amount: float, description: str) -> str:
+        """ينشئ طلب عملية جديد بمعرف فريد كلياً وتقييم آلي للمخاطر."""
+        if amount <= 0:
+            raise ValueError("❌ خطأ: يجب أن يكون مبلغ العملية أكبر من صفر!")
+
+        # حل مشكلة تكرار المعرفات باستخدام UUID4
+        unique_id = uuid.uuid4().hex[:8].upper()
+        tx_id = f"TXN-{datetime.now().strftime('%Y%m%d')}-{unique_id}"
+        
+        # تقييم المخاطر (تم تحسين الشرط ليكون أكثر مرونة)
+        risk_level = "High (عالي)" if amount > 50000 else "Medium (متوسط)"
+        
+        transaction = {
+            "Transaction_ID": tx_id,
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Maker": maker_name.strip(),
+            "Amount": amount,
+            "Description": description.strip(),
+            "Risk_Level": risk_level,
+            "Status": "Pending Approval"
+        }
+        
+        self.pending_requests[tx_id] = transaction
+        print(f"\n[+] [Maker] الموظف ({maker_name}) أنشأ عملية برقم: {tx_id}")
+        print(f"    ⚠️ تقييم المخاطر التلقائي: {risk_level}")
+        return tx_id
+
+    def verify_transaction(self, tx_id: str, checker_name: str, action: str) -> bool:
+        """يراجع العملية ويمنع الصانع من الاعتماد تحقيقاً لمبدأ الفصل بين الواجبات (SoD)."""
+        tx = self.pending_requests.get(tx_id)
+        
+        if not tx:
+            print(f"❌ خطأ: رقم العملية {tx_id} غير موجود أو تمت معالجته مسبقاً!")
+            return False
+
+        # حماية أمنية صارمة: الفصل بين الواجبات (Segregation of Duties)
+        if tx["Maker"].lower() == checker_name.strip().lower():
+            print(f"🚨 [انتهاك أمني] لا يمكن للموظف ({checker_name}) اعتماد عملية قام بإنشائها بنفسه!")
+            return False
+
+        # توحيد التحقق من حالة القرار
+        is_approved = action.strip().lower() in ['اعتماد', 'approve', 'y', 'yes']
+        
+        tx["Status"] = "Approved & Executed" if is_approved else "Rejected"
+        tx["Checker"] = checker_name.strip()
+        tx["Verification_Time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # ترحيل السجل وتطهير القائمة المعلقة
+        self._add_to_immutable_audit_log(tx)
+        del self.pending_requests[tx_id]
+        
+        status_emoji = "✅" if is_approved else "❌"
+        status_text = "باعتماد" if is_approved else "برفض"
+        print(f"{status_emoji} [Checker] المشرف ({checker_name}) قام {status_text} العملية {tx_id} .")
+        return True
+
+    def _add_to_immutable_audit_log(self, transaction: dict):
+        """يربط السجل الحالي بالسجل السابق عبر تشفير SHA-256 لمنع التلاعب (Blockchain Concept)."""
+        # استخدام ensure_ascii=False للحفاظ على النصوص العربية داخل الـ JSON وبثبات الترتيب
+        tx_string = json.dumps(transaction, sort_keys=True, ensure_ascii=False)
+        
+        # بناء الكتلة المشفرة
+        combined_data = f"{tx_string}{self.last_log_hash}"
+        current_hash = hashlib.sha256(combined_data.encode('utf-8')).hexdigest()
+        
+        audit_entry = {
+            "Data": transaction,
+            "Previous_Hash": self.last_log_hash,
+            "Current_Hash": current_hash
+        }
+        
+        self.audit_log.append(audit_entry)
+        self.last_log_hash = current_hash 
+
+    def display_audit_trail(self):
+        """يعرض سجل التدقيق الأمني لغايات الامتثال الرقابي وضمان سلامة البيانات."""
+        print("\n" + "="*25 + " 📊 سجل التدقيق الأمني (Audit Trail) " + "="*25)
+        for entry in self.audit_log:
+            data = entry['Data']
+            print(f"ID: {data['Transaction_ID']} | الحالة: {data['Status']}")
+            print(f"الصانع: {data['Maker']} | المدقق: {data.get('Checker', 'N/A')}")
+            print(f"المبلغ: {data['Amount']} | المخاطر: {data['Risk_Level']}")
+            print(f"🔗 الـ Hash الحالي : {entry['Current_Hash']}")
+            print(f"⛓️ الـ Hash السابق: {entry['Previous_Hash']}")
+            print("-" * 86)
+
+if __name__ == "__main__":
+    print(" 🛡️ RiskGuard: Maker-Checker & Immutable Audit System 🛡️ ")
+    system = RiskGuardSystem()
+
+    # 1. إنشاء عمليات
+    tx1 = system.create_transaction(maker_name="أحمد", amount=75000, description="شراء خوادم جديدة")
+    tx2 = system.create_transaction(maker_name="سارة", amount=12000, description="تجديد تراخيص")
+
+    # 2. فحص محاولة اختراق السياسات الأمنية
+    print("\n--- محاولة فحص اختراق الضوابط الأمنية ---")
+    system.verify_transaction(tx_id=tx1, checker_name="أحمد", action="اعتماد")
+
+    # 3. معالجة صحيحة (الفصل بين الواجبات)
+    print("\n--- معالجة العمليات بشكل صحيح ---")
+    system.verify_transaction(tx_id=tx1, checker_name="ريناد", action="approve") 
+    system.verify_transaction(tx_id=tx2, checker_name="أحمد", action="اعتماد")  
+
+    # 4. عرض سجل الامتثال
+    system.display_audit_trail()
